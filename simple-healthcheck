@@ -1,0 +1,134 @@
+---
+- name: RHEL Comprehensive Health Check
+  hosts: "{{ hostname }}"
+  become: yes 
+  gather_facts: yes
+
+  vars:
+    # Define the key directories you specifically want to monitor the % of
+    key_directories:
+      - /
+      - /var
+      - /var/log
+      - /tmp
+      - /home
+
+  tasks:
+    - name: Ensure hardware facts (including mounts and LVM) are collected
+      ansible.builtin.setup:
+        gather_subset:
+          - hardware
+
+    - name: Gather OS logging and logrotate facts
+      ansible.builtin.shell: |
+        # 1. Check logrotate status (Handles both RHEL 8/9 timers and RHEL 7 cron)
+        if systemctl is-active --quiet logrotate.timer 2>/dev/null; then
+          lr_stat="active (systemd timer)"
+        elif [ -f /etc/cron.daily/logrotate ]; then
+          lr_stat="active (cron.daily)"
+        else
+          lr_stat="inactive or missing"
+        fi
+
+        # 2. Check logging levels and rsyslog status
+        # Gets the core systemd-journald max logging level (usually 'info')
+        j_lvl=$(systemctl show systemd-journald -p MaxLevelStore | cut -d= -f2)
+        # Checks if standard rsyslog is running
+        r_stat=$(systemctl is-active rsyslog 2>/dev/null || echo "inactive")
+
+        # Output as JSON so Ansible can parse it natively
+        cat <<EOF
+        {
+          "logrotate_status": "$lr_stat",
+          "journald_max_level_store": "$j_lvl",
+          "rsyslog_status": "$r_stat"
+        }
+        EOF
+      register: _logging_raw
+      changed_when: false
+
+    - name: Construct the comprehensive health report JSON data
+      ansible.builtin.set_fact:
+        _health_json: >-
+          {%- set mounts_list = [] -%}
+          {%- for mount in ansible_mounts -%}
+            
+            {# --- ORIGINAL LOGIC: ALL MOUNTS --- #}
+            {%- set pct_avail = ((mount.size_available / mount.size_total) * 100) | round(2) if mount.size_total > 0 else 0 -%}
+            {%- set ns = namespace(type='local', vg_name='', vg_free='N/A') -%}
+            
+            {%- if mount.fstype in ['cifs', 'smb3'] -%}
+              {%- set ns.type = 'smb' -%}
+            {%- else -%}
+              {%- set lvm_facts = ansible_lvm | default({'lvs': {}, 'vgs': {}}) -%}
+              {%- for lv_name, lv_info in lvm_facts.lvs.items() -%}
+                {%- set vg_name = lv_info.vg -%}
+                {%- set safe_vg = vg_name | replace('-', '--') -%}
+                {%- set safe_lv = lv_name | replace('-', '--') -%}
+                {%- if safe_vg in mount.device and safe_lv in mount.device -%}
+                  {%- set ns.type = 'lvm' -%}
+                  {%- set ns.vg_name = vg_name -%}
+                  {%- set ns.vg_free = lvm_facts.vgs[vg_name].free_g | default('0') ~ ' GB' -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endif -%}
+            
+            {%- set entry = {
+              'mount_point': mount.mount,
+              'device': mount.device,
+              'fstype': mount.fstype,
+              'storage_type': ns.type,
+              'total_size_bytes': mount.size_total,
+              'percent_available': pct_avail,
+              'vg_free_space': ns.vg_free
+            } -%}
+            {%- set _ = mounts_list.append(entry) -%}
+          {%- endfor -%}
+
+          {# --- NEW LOGIC: KEY DIRECTORIES --- #}
+          {%- set key_dirs_list = [] -%}
+          {%- for kdir in key_directories -%}
+            {%- set dir_ns = namespace(target_mount='', length=0, avail=0, total=0) -%}
+            
+            {# Find which mount actually backs this directory by matching the longest path prefix #}
+            {%- for m in ansible_mounts -%}
+              {%- if kdir.startswith(m.mount) -%}
+                {%- if m.mount | length > dir_ns.length -%}
+                  {%- set dir_ns.length = m.mount | length -%}
+                  {%- set dir_ns.target_mount = m.mount -%}
+                  {%- set dir_ns.avail = m.size_available -%}
+                  {%- set dir_ns.total = m.size_total -%}
+                {%- endif -%}
+              {%- endif -%}
+            {%- endfor -%}
+            
+            {%- set kdir_pct_avail = ((dir_ns.avail / dir_ns.total) * 100) | round(2) if dir_ns.total > 0 else 0 -%}
+            
+            {%- set _ = key_dirs_list.append({
+              'directory': kdir,
+              'backed_by_mount': dir_ns.target_mount,
+              'percent_available': kdir_pct_avail
+            }) -%}
+          {%- endfor -%}
+
+          {# --- MERGE INTO FINAL REPORT --- #}
+          {%- set final_report = {
+            'all_storage_mounts': mounts_list,
+            'key_directories_usage': key_dirs_list,
+            'logging_and_rotation': (_logging_raw.stdout | from_json)
+          } -%}
+          {{ final_report | to_json }}
+
+    - name: Parse JSON string into the final structured Ansible variable
+      ansible.builtin.set_fact:
+        system_health_report: "{{ _health_json | from_json }}"
+
+    - name: Display the final system_health_report variable
+      ansible.builtin.debug:
+        var: system_health_report
+
+    - name: set stats
+      ansible.builtin.set_stats:
+        data:
+          system_health_report: "{{ _health_json | from_json }}"
+  
