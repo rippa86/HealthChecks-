@@ -1,0 +1,290 @@
+---
+# =============================================================================
+# RHEL Storage Health Check — role tasks
+# Discovers local, LVM, and SMB/CIFS storage; builds storage_health_report.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Host eligibility — restrict to Red Hat Enterprise Linux
+# -----------------------------------------------------------------------------
+- name: Verify target host is Red Hat Enterprise Linux
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "RedHat"
+      - ansible_distribution == "Red Hat Enterprise Linux"
+    fail_msg: >-
+      Storage health check requires Red Hat Enterprise Linux
+      (found {{ ansible_distribution | default('unknown') }}).
+    success_msg: "Host {{ inventory_hostname }} is RHEL {{ ansible_distribution_version }}."
+
+# -----------------------------------------------------------------------------
+# 2. Fact gathering — mounts (setup) and LVM (community.general + LVM tools)
+# -----------------------------------------------------------------------------
+- name: Refresh hardware and mount facts
+  ansible.builtin.setup:
+    gather_subset:
+      - mounts
+      - hardware
+  when: ansible_mounts is not defined
+
+# JSON reports from LVM tools provide canonical byte-level VG/LV data on RHEL
+- name: Collect Volume Group statistics (LVM JSON report, bytes)
+  ansible.builtin.command:
+    argv:
+      - vgs
+      - --reportformat
+      - json
+      - --units
+      - b
+      - -o
+      - vg_name,vg_size,vg_free,vg_extent_size,pv_count
+  register: storage_health_vgs_raw
+  changed_when: false
+  failed_when: storage_health_vgs_raw.rc not in [0, 5]
+
+- name: Collect Logical Volume device mapping (LVM JSON report)
+  ansible.builtin.command:
+    argv:
+      - lvs
+      - --reportformat
+      - json
+      - -o
+      - lv_name,vg_name,lv_path,lv_dm_path
+  register: storage_health_lvs_raw
+  changed_when: false
+  failed_when: storage_health_lvs_raw.rc not in [0, 5]
+
+- name: List Volume Group names for community.general queries
+  ansible.builtin.command:
+    argv: [vgs, --noheadings, -o, vg_name]
+  register: storage_health_vg_name_list
+  changed_when: false
+  failed_when: storage_health_vg_name_list.rc not in [0, 5]
+
+- name: Gather Volume Group facts (community.general.lvg, state=info)
+  community.general.lvg:
+    vg: "{{ item }}"
+    state: info
+  loop: "{{ storage_health_vg_names }}"
+  register: storage_health_lvg_info_results
+  changed_when: false
+  vars:
+    storage_health_vg_names: >-
+      {{
+        storage_health_vg_name_list.stdout_lines | default([])
+        | map('trim') | select('ne', '') | list
+      }}
+  when: storage_health_vg_names | length > 0
+
+- name: Gather Logical Volume facts (community.general.lvol, state=info)
+  community.general.lvol:
+    vg: "{{ item.vg_name }}"
+    lv: "{{ item.lv_name }}"
+    state: info
+  loop: "{{ storage_health_lvol_loop_rows }}"
+  register: storage_health_lvol_info_results
+  changed_when: false
+  vars:
+    storage_health_lvol_loop_rows: >-
+      {{
+        (
+          (storage_health_lvs_raw.stdout | default('{}') | from_json).report
+          | default([{'lv': []}])
+        )[0].lv | default([])
+      }}
+  when: storage_health_lvol_loop_rows | length > 0
+
+# -----------------------------------------------------------------------------
+# 3. Parse LVM JSON and build lookup indexes
+# -----------------------------------------------------------------------------
+- name: Initialize LVM parsing indexes
+  ansible.builtin.set_fact:
+    storage_health_vg_index: {}
+    storage_health_lv_device_map: {}
+
+- name: Parse Volume Group JSON into index (vg_name -> attributes)
+  ansible.builtin.set_fact:
+    storage_health_vg_index: >-
+      {{
+        storage_health_vg_index | combine({
+          row.vg_name: {
+            'vg_name': row.vg_name,
+            'vg_size_bytes': row.vg_size | default('0') | regex_replace('[^0-9]', '') | int,
+            'vg_free_bytes': row.vg_free | default('0') | regex_replace('[^0-9]', '') | int,
+            'pv_count': row.pv_count | default('0') | regex_replace('[^0-9]', '') | int,
+          }
+        })
+      }}
+  loop: "{{ storage_health_vg_rows }}"
+  vars:
+    storage_health_vg_rows: >-
+      {{
+        (
+          (storage_health_vgs_raw.stdout | default('{}') | from_json).report
+          | default([{'vg': []}])
+        )[0].vg | default([])
+      }}
+  when: storage_health_vg_rows | length > 0
+
+- name: Build logical-volume device path to Volume Group map
+  ansible.builtin.set_fact:
+    storage_health_lv_device_map: >-
+      {{
+        storage_health_lv_device_map | combine({
+          item.lv_path: item.vg_name,
+          item.lv_dm_path: item.vg_name,
+          storage_health_mapper_path: item.vg_name,
+        })
+      }}
+  loop: "{{ storage_health_lv_rows }}"
+  vars:
+    storage_health_lv_rows: >-
+      {{
+        (
+          (storage_health_lvs_raw.stdout | default('{}') | from_json).report
+          | default([{'lv': []}])
+        )[0].lv | default([])
+      }}
+    storage_health_mapper_path: >-
+      /dev/mapper/{{ item.vg_name | replace('-', '--') }}-{{ item.lv_name | replace('-', '--') }}
+  when:
+    - storage_health_lv_rows | length > 0
+    - item.lv_path is defined
+    - item.lv_dm_path is defined
+
+# Supplement device map from ansible_lvm facts when LVM JSON is empty but facts exist
+- name: Supplement LV device map from ansible_lvm facts
+  ansible.builtin.set_fact:
+    storage_health_lv_device_map: >-
+      {{
+        storage_health_lv_device_map | combine({
+          '/dev/mapper/' ~ (vg_name | replace('-', '--')) ~ '-' ~ (lv_name | replace('-', '--')): vg_name,
+          '/dev/' ~ vg_name ~ '/' ~ lv_name: vg_name,
+        })
+      }}
+  loop: "{{ ansible_lvm.lvs | default({}) | dict2items }}"
+  vars:
+    lv_name: "{{ item.key }}"
+    vg_name: "{{ item.value.vg }}"
+  when:
+    - ansible_lvm is defined
+    - ansible_lvm.lvs is defined
+    - item.value.vg is defined
+
+# -----------------------------------------------------------------------------
+# 4. Build storage_health_report from active, relevant mounts
+# -----------------------------------------------------------------------------
+- name: Reset aggregated storage health report
+  ansible.builtin.set_fact:
+    storage_health_report: []
+
+- name: Build storage health report entries for each active mount
+  ansible.builtin.set_fact:
+    storage_health_report: "{{ storage_health_report + [storage_health_entry] }}"
+  loop: "{{ ansible_mounts | default([]) }}"
+  vars:
+    storage_health_monitored_fstype: >-
+      {{
+        item.fstype in storage_health_local_fstypes
+        or item.fstype in storage_health_smb_fstypes
+      }}
+    storage_health_vg_name: "{{ storage_health_lv_device_map[item.device] | default('', true) }}"
+    storage_health_vg_data: "{{ storage_health_vg_index[storage_health_vg_name] | default({}) }}"
+    storage_health_total_bytes: "{{ item.size_total | default(0) | int }}"
+    storage_health_avail_bytes: "{{ item.size_available | default(0) | int }}"
+    storage_health_percent_available: >-
+      {{
+        (
+          (storage_health_avail_bytes | float / storage_health_total_bytes | float * 100)
+          if storage_health_total_bytes | int > 0
+          else 0.0
+        ) | round(2)
+      }}
+    storage_health_type: >-
+      {{
+        'smb_cifs' if item.fstype in storage_health_smb_fstypes
+        else ('lvm' if (storage_health_vg_name | length > 0)
+        else 'local')
+      }}
+    storage_health_vg_free_bytes: "{{ storage_health_vg_data.vg_free_bytes | default(0) | int }}"
+    storage_health_vg_size_bytes: "{{ storage_health_vg_data.vg_size_bytes | default(0) | int }}"
+    storage_health_vg_free_percent: >-
+      {{
+        (
+          (storage_health_vg_free_bytes | float / storage_health_vg_size_bytes | float * 100)
+          if storage_health_vg_size_bytes | int > 0
+          else 0.0
+        ) | round(2)
+      }}
+    storage_health_entry:
+      mount_point: "{{ item.mount }}"
+      device: "{{ item.device }}"
+      fstype: "{{ item.fstype }}"
+      storage_type: "{{ storage_health_type }}"
+      total_size: "{{ storage_health_total_bytes | int | storage_health_human_bytes }}"
+      total_size_bytes: "{{ storage_health_total_bytes | int }}"
+      available_size: "{{ storage_health_avail_bytes | int | storage_health_human_bytes }}"
+      available_size_bytes: "{{ storage_health_avail_bytes | int }}"
+      percent_available: "{{ storage_health_percent_available }}"
+      vg_name: "{{ storage_health_vg_name if (storage_health_vg_name | length > 0) else none }}"
+      vg_free_space: >-
+        {{
+          (storage_health_vg_free_bytes | int | storage_health_human_bytes)
+          ~ ' (' ~ storage_health_vg_free_percent ~ '% of VG unallocated)'
+          if (storage_health_vg_name | length > 0)
+          else none
+        }}
+      vg_free_space_bytes: "{{ storage_health_vg_free_bytes | int if (storage_health_vg_name | length > 0) else none }}"
+      vg_free_percent: "{{ storage_health_vg_free_percent if (storage_health_vg_name | length > 0) else none }}"
+  when:
+    - item.mount is defined
+    - item.size_total is defined
+    - item.size_total | int > 0
+    - item.fstype not in storage_health_exclude_fstypes
+    - storage_health_monitored_fstype | bool
+
+# -----------------------------------------------------------------------------
+# 6. Append Volume Group summary rows (VG-level free space, no mount required)
+# -----------------------------------------------------------------------------
+- name: Append Volume Group-level summary rows to the report
+  ansible.builtin.set_fact:
+    storage_health_report: "{{ storage_health_report + [storage_health_vg_entry] }}"
+  loop: "{{ storage_health_vg_index | dict2items }}"
+  vars:
+    storage_health_vg_free_b: "{{ item.value.vg_free_bytes | default(0) | int }}"
+    storage_health_vg_size_b: "{{ item.value.vg_size_bytes | default(0) | int }}"
+    storage_health_vg_free_pct: >-
+      {{
+        (
+          (storage_health_vg_free_b | float / storage_health_vg_size_b | float * 100)
+          if storage_health_vg_size_b | int > 0
+          else 0.0
+        ) | round(2)
+      }}
+    storage_health_vg_entry:
+      mount_point: null
+      device: null
+      fstype: null
+      storage_type: lvm_volume_group
+      vg_name: "{{ item.key }}"
+      total_size: "{{ storage_health_vg_size_b | int | storage_health_human_bytes }}"
+      total_size_bytes: "{{ storage_health_vg_size_b | int }}"
+      available_size: "{{ storage_health_vg_free_b | int | storage_health_human_bytes }}"
+      available_size_bytes: "{{ storage_health_vg_free_b | int }}"
+      percent_available: "{{ storage_health_vg_free_pct }}"
+      vg_free_space: >-
+        {{
+          (storage_health_vg_free_b | int | storage_health_human_bytes)
+          ~ ' (' ~ storage_health_vg_free_pct ~ '% of VG unallocated)'
+        }}
+      vg_free_space_bytes: "{{ storage_health_vg_free_b | int }}"
+      vg_free_percent: "{{ storage_health_vg_free_pct }}"
+  when: storage_health_vg_index | length > 0
+
+# -----------------------------------------------------------------------------
+# 7. Attach community.general LVM module raw facts for downstream automation
+# -----------------------------------------------------------------------------
+- name: Store raw community.general LVM query results on the host
+  ansible.builtin.set_fact:
+    storage_health_lvg_facts: "{{ storage_health_lvg_info_results | default({}) }}"
+    storage_health_lvol_facts: "{{ storage_health_lvol_info_results | default({}) }}"

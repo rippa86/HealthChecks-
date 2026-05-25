@@ -1,0 +1,31 @@
+---
+# Comprehensive storage health check for Red Hat Enterprise Linux hosts.
+#
+# Usage:
+#   ansible-galaxy collection install -r requirements.yml
+#   ansible-playbook playbooks/storage_health_check.yml
+#
+# Access the aggregated report on each host:
+#   hostvars['<hostname>']['storage_health_report']
+#
+- name: RHEL storage health check
+  hosts: "{{ hostname }}"
+  gather_facts: true
+  become: true
+
+  collections:
+    - community.general
+
+  vars:
+    # Populated by the storage_health_check role
+    storage_health_report: []
+
+  roles:
+    - role: storage_health_check
+
+  post_tasks:
+    # Optional visibility — disabled by default per requirements
+    - name: Display storage health report (optional)
+      ansible.builtin.debug:
+        var: storage_health_report
+      when: storage_health_debug_output | bool

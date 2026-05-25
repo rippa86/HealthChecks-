@@ -1,0 +1,40 @@
+---
+# Filesystem types treated as local block storage (non-LVM and LVM-backed).
+storage_health_local_fstypes:
+  - ext2
+  - ext3
+  - ext4
+  - xfs
+  - btrfs
+
+# Network filesystem types (SMB/CIFS).
+storage_health_smb_fstypes:
+  - cifs
+  - smb3
+
+# Pseudo / virtual filesystems excluded from the health report.
+storage_health_exclude_fstypes:
+  - autofs
+  - binfmt_misc
+  - bpf
+  - cgroup
+  - cgroup2
+  - configfs
+  - debugfs
+  - devpts
+  - devtmpfs
+  - efivarfs
+  - fusectl
+  - hugetlbfs
+  - mqueue
+  - proc
+  - pstore
+  - rpc_pipefs
+  - securityfs
+  - selinuxfs
+  - sysfs
+  - tracefs
+  - tmpfs
+
+# When true, prints storage_health_report via debug (default aggregates only into the variable).
+storage_health_debug_output: false
