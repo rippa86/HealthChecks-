@@ -13,9 +13,6 @@
   gather_facts: true
   become: true
 
-  collections:
-    - community.general
-
   vars:
     # Populated by the storage_health_check role
     storage_health_report: []
