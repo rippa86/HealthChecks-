@@ -1,6 +1,6 @@
 ---
 - name: RHEL Comprehensive Health Check
-  hosts: "{{ ansible_eda.event.payload.incident_details.cmdb_ci }}"
+  hosts: all
   become: yes 
   gather_facts: yes
 
