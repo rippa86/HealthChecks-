@@ -1,6 +1,6 @@
 ---
 - name: RHEL Comprehensive Health Check
-  hosts: all
+  hosts: "{{ hostname }}"
   become: yes 
   gather_facts: yes
 
