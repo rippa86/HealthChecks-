@@ -1,0 +1,55 @@
+---
+- name: Generate ServiceNow Ticket Update via LiteLLM
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    # Always store API keys in an Ansible Vault, never in plaintext!
+    litellm_api_key: "your_secure_api_key_here"
+    
+    # Placeholder for the report if you are running this standalone
+    # system_health_report: {} 
+
+  tasks:
+    - name: Query LiteLLM to generate the ServiceNow update text
+      ansible.builtin.uri:
+        url: "https://litellm-litemaas.apps.prod.rhoai.rh-aiservices-bu.com/v1/chat/completions"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ llm_api_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          model: "Qwen3.6-35B-A3B"
+          messages:
+            - role: "user"
+              # Using the '|' character creates a multi-line string in YAML.
+              # We inject the JSON variable at the bottom using 'to_nice_json' 
+              # to ensure it is passed as readable text inside the prompt.
+              content: |
+                Act as an expert RHEL Storage Administrator. I will provide you with a JSON storage health report. Based on this report, generate a professional update to be pasted directly into a ServiceNow incident record.
+
+                Please strictly adhere to the following requirements:
+                1. Tone and Style: Use formal, corporate IT language. Do not use any emojis.
+                2. Diagnosis: Provide a concise root cause analysis in 30 words or less.
+                3. Action Plan & Troubleshooting: Provide exact, step-by-step CLI commands. If there is unallocated free space in the Volume Group, instruct me to utilize a portion of it (do not use 100%). If the volume group is too small, recommend attaching a new disk.
+                4. Structure: Format the output cleanly using standard ticketing headers (e.g., "Diagnosis", "Work Notes / Action Plan", "Long-Term Recommendations").
+
+                Here is the report:
+                {{ system_health_report | to_nice_json }}
+        return_content: yes
+        status_code: 200
+      register: _llm_response
+
+    - name: Extract the AI-generated text into a variable
+      ansible.builtin.set_fact:
+        generated_snow_notes: "{{ _llm_response.json.choices[0].message.content }}"
+
+    - name: Extract the AI-generated text into a variable
+      ansible.builtin.set_stats:
+        data:
+          generated_snow_notes: "{{ generated_snow_notes }}"
+
+    - name: Display the generated ServiceNow notes
+      ansible.builtin.debug:
+        var: generated_snow_notes

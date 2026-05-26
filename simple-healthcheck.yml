@@ -1,6 +1,6 @@
 ---
 - name: RHEL Comprehensive Health Check
-  hosts: "{{ hostname }}"
+  hosts: "{{ event.payload.incident_details.cmdb_ci }}"
   become: yes 
   gather_facts: yes
 
