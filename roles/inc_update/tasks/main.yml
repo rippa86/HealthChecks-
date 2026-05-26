@@ -1,0 +1,51 @@
+---
+# tasks file for update_inc
+
+- block: 
+  - name: Retrieve a specific incident by its sys_id
+    servicenow.itsm.incident_info:
+      instance:
+        host: "{{ snow_instance }}"
+        username: "{{ snow_username }}"
+        password: "{{ snow_password }}"
+      number: "{{ incident_number }}"
+    register: result
+  
+  - name: setfact for sysid
+    ansible.builtin.set_fact:
+      incident_sys_id: "{{ result.records[0].sys_id }}"
+  - name: Debug the retrieved incident details
+    ansible.builtin.set_stats:
+      data:
+        incident_sys_id: "{{ incident_sys_id }}"
+  when: sys_id is not defined
+
+- ansible.builtin.debug: 
+    var: result.records[0]
+- name: Update ServiceNow ticket to indicate start
+  servicenow.itsm.api:
+    instance:
+      host: "{{ snow_instance }}"
+      username: "{{ snow_username }}"
+      password: "{{ snow_password }}"
+    resource: incident
+    action: patch
+    sys_id: "{{ incident_sys_id }}"
+    data:
+      work_notes: "{{ inc_worknotes }}"
+
+  register: snow_var
+
+- name: Attach the log files
+  servicenow.itsm.attachment_upload:
+    instance:
+      host: "{{ snow_instance }}"
+      username: "{{ snow_username }}"
+      password: "{{ snow_password }}"
+    table_name: incident
+    table_sys_id: "{{ incident_sys_id  }}"
+    attachments:
+      - path: "/tmp/HealthCheck-{{ incident.number }}.yml"
+        name: "HealthCheck-{{ incident.number }}.yml"
+        type: "text/plain"
+  when: inc_attachments

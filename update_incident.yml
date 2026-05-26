@@ -1,0 +1,23 @@
+- hosts: localhost
+  gather_facts: no
+  tasks:
+  
+    - name: Save string to temporary file
+      ansible.builtin.copy:
+        content: "{{ system_health_report | to_nice_yaml }}" # The string you want to upload
+        dest: "/tmp/HealthCheck-{{ incident.number }}.yml"
+      when: inc_attachments
+
+    - name: Update Incident 
+      ansible.builtin.include_role:
+        name: inc_update
+      vars:
+        incident_number: "{{ incident.number }}"
+        inc_worknotes: "{{ work_notes }}"
+        inc_attachments: true
+
+    - name: Remove temporary file
+      ansible.builtin.file:
+        path: "/tmp/HealthCheck-{{ incident.number }}.yml"
+        state: absent
+      when: inc_attachments

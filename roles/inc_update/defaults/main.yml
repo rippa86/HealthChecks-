@@ -1,0 +1,11 @@
+---
+# defaults file for update_inc
+instance: none
+username: none
+password: none
+incident_sys_id: 0 
+inc_worknotes: "No worknotes Provided"
+attachments: 
+  - name: var
+    path: foo
+has_attachments: false
