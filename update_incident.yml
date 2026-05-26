@@ -14,7 +14,7 @@
       vars:
         incident_number: "{{ incident.number }}"
         inc_worknotes: "{{ work_notes }}"
-        inc_attachments: true
+        inc_attachments: "{{ inc_attachments | bool }}"
 
     - name: Remove temporary file
       ansible.builtin.file:
