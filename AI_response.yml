@@ -40,6 +40,7 @@
                 {{ system_health_report | to_nice_json }}
         return_content: yes
         status_code: 200
+        timeout: 60
       register: _llm_response
       retries: 2
       delay: 5
