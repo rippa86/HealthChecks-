@@ -12,12 +12,30 @@
       - /var/log
       - /tmp
       - /home
+    
+    # Define critical system services to monitor
+    critical_services:
+      - sshd.service
+      - crond.service
+      - rsyslog.service
+      - NetworkManager.service
+      - firewalld.service
 
   tasks:
     - name: Ensure hardware facts (including mounts and LVM) are collected
       ansible.builtin.setup:
         gather_subset:
           - hardware
+
+    - name: Gather system service facts
+      ansible.builtin.service_facts:
+
+    - name: Gather recent ERROR logs from journalctl (since last boot)
+      ansible.builtin.shell: |
+        journalctl -p err -b --no-pager -n 15 -o cat || echo "No recent errors found or journald unavailable."
+      register: _log_errors
+      changed_when: false
+      ignore_errors: true
 
     - name: Gather OS logging and logrotate facts
       ansible.builtin.shell: |
@@ -111,11 +129,23 @@
             }) -%}
           {%- endfor -%}
 
+          {# --- NEW LOGIC: CRITICAL SERVICES --- #}
+          {%- set services_list = [] -%}
+          {%- for svc in critical_services -%}
+            {%- set svc_state = ansible_facts.services[svc].state | default('unknown or missing') if svc in ansible_facts.services else 'not found' -%}
+            {%- set _ = services_list.append({
+              'service': svc,
+              'state': svc_state
+            }) -%}
+          {%- endfor -%}
+
           {# --- MERGE INTO FINAL REPORT --- #}
           {%- set final_report = {
             'all_storage_mounts': mounts_list,
             'key_directories_usage': key_dirs_list,
-            'logging_and_rotation': (_logging_raw.stdout | from_json)
+            'logging_and_rotation': (_logging_raw.stdout | from_json),
+            'critical_services_status': services_list,
+            'recent_log_errors': _log_errors.stdout_lines | default([])
           } -%}
           {{ final_report | to_json }}
 
@@ -131,4 +161,3 @@
       ansible.builtin.set_stats:
         data:
           system_health_report: "{{ _health_json | from_json }}"
-  
