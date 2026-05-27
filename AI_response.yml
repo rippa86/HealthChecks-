@@ -33,7 +33,8 @@
                 1. Tone and Style: Use formal, corporate IT language. Do not use any emojis.
                 2. Diagnosis: Provide a concise root cause analysis in 30 words or less.
                 3. Action Plan & Troubleshooting: Provide exact, step-by-step CLI commands. If there is unallocated free space in the Volume Group, instruct me to utilize a portion of it (do not use 100%). If the volume group is too small, recommend attaching a new disk.
-                4. Structure: Format the output cleanly using standard ticketing headers (e.g., "Diagnosis", "Work Notes / Action Plan", "Long-Term Recommendations").
+                4. Ansible Automation: If Providing "Long-Term Recommendations", provide a recommendation for Ansible automation if feasible. Include a short example playbook to automate the fix, and explicitly list fully supported Red Hat Ansible collections or roles (e.g., the redhat.rhel_system_roles.storage role, ansible.builtin, or ansible.posix). only use community.* modules when nessassary.
+                5. Structure: Format the output cleanly using standard ticketing headers (e.g., "Diagnosis", "Work Notes / Action Plan", "Long-Term Recommendations").
 
                 Here is the report:
                 {{ system_health_report | to_nice_json }}
