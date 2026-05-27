@@ -41,6 +41,8 @@
         return_content: yes
         status_code: 200
       register: _llm_response
+      retries: 2
+      delay: 5
 
     - name: Extract the AI-generated text into a variable
       ansible.builtin.set_fact:
