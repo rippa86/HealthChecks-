@@ -1,22 +1,48 @@
-#- name: Create change request
-  # servicenow.itsm.change_request:
-  #   instance:
-  #     host: "{{ snow_instance }}"
-  #     username: "{{ snow_username }}"
-  #     password: "{{ snow_password }}"
-  #   type: normal
-  #   state: new
-  #   requested_by: AAP
-  #   short_description: Testing Role #"{{ short_description }}"
-  #   description: Testing Role again #"{{ short_description }}"
-  #   assignment_group: Software
-  #   priority: 3 #"{{ priority }}"
-  #   risk: 4 #"{{ risk }}"
-  #   other: 
-  #     start_date: 2026-06-11 02:00:00
-  #     end_date: 2026-06-11 03:00:00
-  #     cmdb_ci: 007c4001c343101035ae3f52c1d3aeb2
-  # register: change_request
+- name: Calculate days until the next Wednesday
+  ansible.builtin.set_fact:
+    # now(fmt='%w') gets the current day of the week (0=Sunday, 1=Monday ... 3=Wednesday).
+    # This if/else logic finds exactly how many days are left until the next occurrence of a Wednesday.
+    days_until_wed: >-
+      {%- set today = now(fmt='%w') | int -%}
+      {%- set offset = 3 - today -%}
+      {%- if offset <= 0 -%}
+        {{ offset + 7 }}
+      {%- else -%}
+        {{ offset }}
+      {%- endif -%}
+
+- name: Set the target date for the *following* Wednesday
+  ansible.builtin.set_fact:
+    # We take current time, add the days until the *next* Wednesday, plus an extra 7 days 
+    # to ensure it targets the *following* week. Everything is converted to seconds (* 86400).
+    # (Note: If you actually meant tomorrow, simply remove the '+ 7' from this formula).
+    target_day: "{{ '%Y-%m-%d' | strftime((now(fmt='%s') | int) + ((days_until_wed | int + 7) * 86400)) }}"
+
+- name: Set ServiceNow start and end date variables
+  ansible.builtin.set_fact:
+    # Setting the start window to 7:00 PM and assuming a 2-hour window for the end time.
+    start_date: "{{ target_day }} 19:00:00"
+    end_date: "{{ target_day }} 21:00:00"
+
+- name: Create change request
+  servicenow.itsm.change_request:
+    instance:
+      host: "{{ snow_instance }}"
+      username: "{{ snow_username }}"
+      password: "{{ snow_password }}"
+    type: normal
+    state: new
+    requested_by: AAP
+    short_description: "{{ short_description }}"
+    description: "{{ short_description }}"
+    assignment_group: Software
+    priority: "{{ priority }}"
+    risk: "{{ risk }}"
+    other: 
+      start_date: "{{ start_date }}"
+      end_date: "{{ end_date }}"
+      cmdb_ci: "{{ hostname }}"
+  register: change_request
 
 
 - name: Create change request
@@ -25,18 +51,13 @@
       host: "{{ snow_instance }}"
       username: "{{ snow_username }}"
       password: "{{ snow_password }}"
-    number: CHG0030004
+    number: "{{ change_request.record.number }}" # The ticket you want to update
     other:
-      cmdb_ci: grafana-demo.lab.rippa.io
-      justification: "Upgrading the core router to patch a critical security vulnerability."
-      implementation_plan: |
-        1. Divert traffic to secondary router.
-        2. Apply firmware update.
-        3. Reboot primary router.
-        4. Restore normal traffic flow.
-      risk_impact_analysis: "Low risk. Secondary router has sufficient capacity to handle peak load."
-      test_plan: "Run standard automated network diagnostic suite post-reboot."
-      backout_plan: "Roll back to previous firmware version via backup image."
+      justification: "{{ justification }}"
+      implementation_plan: "{{ implementation_plan }}"
+      risk_impact_analysis: "{{ risk_impact_analysis }}"
+      test_plan: "{{ test_plan }}"
+      backout_plan: "Execute Rollback playbook to restore previous state."
 
 - name: Update Work Notes and Additional Comments
   servicenow.itsm.change_request:
@@ -44,10 +65,10 @@
       host: "{{ snow_instance }}"
       username: "{{ snow_username }}"
       password: "{{ snow_password }}"
-    number: "CHG0030004" # The ticket you want to update
+    number: "{{ change_request.record.number }}"
     other:
-      work_notes: "Ansible automation has successfully verified the target server state prior to execution."
-      comments: "Hello, we are preparing to execute your requested change."
+      work_notes: "{{ work_notes }}"
+      comments: "{{ comments }}"
   register: chg_notes_result
 # - name: Create change request
 #   servicenow.itsm.change_request:

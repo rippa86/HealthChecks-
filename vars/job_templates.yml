@@ -1,0 +1,16 @@
+---
+playbooks:
+  - name: extendLVM
+    vars:
+      hostname: 
+      extents: 
+      lvm_name: 
+  - name: healthcheck
+    vars:
+      hostname: 
+  - name: add_disk
+    vars:
+      hostname: 
+      extents: 
+      lvm_name: 
+      vg_name: 

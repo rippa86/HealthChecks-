@@ -1,0 +1,72 @@
+---
+- name: Generate ServiceNow Ticket Update via LiteLLM
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars/job_templates.yml
+
+  vars:
+    # Always store API keys in an Ansible Vault, never in plaintext!
+    litellm_api_key: "your_secure_api_key_here"
+    
+    # Placeholder for the report if you are running this standalone
+    # system_health_report: {} 
+
+  tasks:
+    - name: Query LiteLLM to generate the ServiceNow update text
+      ansible.builtin.uri:
+        url: "https://litellm-litemaas.apps.prod.rhoai.rh-aiservices-bu.com/v1/chat/completions"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ llm_api_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          model: "Qwen3.6-35B-A3B"
+          messages:
+            - role: "user"
+              content: |
+                You are an expert IT Operations Reliability AI. Your objective is to analyze monitoring alerts, infrastructure health checks, and CMDB CI data to recommend automated remediation actions.
+                Follow these strict operating procedures:
+                1. Review the provided Grafana Alert and Health Check results to understand the current system state.
+                2. Review the provided CI Information to understand the business context, criticality, and usage of the affected system.
+                3. Based on the severity of the alert, the available health check metrics, and the CI criticality, recommend the single most appropriate Ansible playbook from the provided "Controller templates".
+                4. Provide a detailed explanation of why this playbook is the most effective and safest choice.
+                5. Provide a percentage of confidence in your recommendation.
+                6. Identify the exact variables required to execute the recommended playbook based on the template definitions. You must also include the specific playbook name as the "job_template".
+                7. Do not use emojis in your response.
+                8. Output your final response strictly in the following JSON format. Do not include any text outside of the JSON block.
+                   JSON Schema to include the following keys:
+                  CI_name: Name of the server or CI,
+                  required_vars: List of variables required to execute the recommended playbook
+                  job_template: Name of the selected playbook from the Controller templates,
+                  var_name: value based on context
+                  description_of_why: Explanation for the playbook choice
+                  confidence_percentage: XX%
+                  CHG_description: Short description suitable for a ServiceNow Change Request
+                  justification: Detailed justification for the change request
+                  risk_and_impact: Assessment of risk and potential business impact
+
+                Please analyze the following incident data and provide your recommended remediation in the requested JSON format.
+
+                === GRAFANA ALERT ===
+                [{{ grafana_alert | to_yaml }}]
+
+                === CI INFORMATION ===
+                [{{ ci_info | to_yaml }}]
+
+                === HEALTH CHECK RESULTS ===
+                [{{ health_check_results | to_yaml }}]
+
+                === CONTROLLER TEMPLATES ===
+                [{{ playbooks }}]
+        return_content: yes
+        status_code: 200
+        timeout: 120
+      register: _llm_response
+      retries: 2
+      delay: 5
+
+    - name: Extract the AI-generated text into a variable
+      ansible.builtin.debug:
+        msg: "{{ _llm_response | to_nice_json }}"

@@ -1,0 +1,30 @@
+- hosts: localhost
+  gather_facts: no
+
+  tasks:
+  - name: get CI information 
+    servicenow.itsm.configuration_item:
+      instance:
+        host: "{{ snow_instance }}"
+        username: "{{ snow_username }}"
+        password: "{{ snow_password }}"
+      name: "{{ hostname }}"
+    register: ci_info
+
+  - name: Extract specific ServiceNow CI information into a custom fact
+    ansible.builtin.set_fact:
+      ci_details:
+        classification: "{{ ci_info.record.classification }}"
+        comments: "{{ ci_info.record.comments }}"
+        host_name: "{{ ci_info.record.host_name }}"
+        operational_status: "{{ ci_info.record.operational_status }}"
+        short_description: "{{ ci_info.record.short_description }}"
+        sys_id: "{{ ci_info.record.sys_id }}"
+    
+  - name: set stats
+    ansible.builtin.set_stats:
+      data:
+        ci_details: "{{ ci_details }}"
+
+
+
