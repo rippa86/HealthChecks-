@@ -8,6 +8,7 @@
   vars:
     # Always store API keys in an Ansible Vault, never in plaintext!
     litellm_api_key: "your_secure_api_key_here"
+    ####
     
     # Placeholder for the report if you are running this standalone
     # system_health_report: {} 
@@ -53,10 +54,10 @@
                 [{{ grafana_alert | to_yaml }}]
 
                 === CI INFORMATION ===
-                [{{ ci_info | to_yaml }}]
+                [{{ ci_details | to_yaml }}]
 
                 === HEALTH CHECK RESULTS ===
-                [{{ health_check_results | to_yaml }}]
+                [{{ system_health_report | to_yaml }}]
 
                 === CONTROLLER TEMPLATES ===
                 [{{ playbooks }}]
@@ -69,4 +70,4 @@
 
     - name: Extract the AI-generated text into a variable
       ansible.builtin.debug:
-        msg: "{{ _llm_response | to_nice_json }}"
+        msg: "{{ _llm_response }}"
