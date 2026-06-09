@@ -68,11 +68,11 @@
       retries: 2
       delay: 5
 
-    - name: Extract the AI-generated text into a variable
+- name: Debug the AI-generated text
       ansible.builtin.debug:
-        msg: "{{ (_llm_response.content.choices[0].message.content | from_json) | to_nice_json }}"
+        msg: "{{ (_llm_response.json.choices[0].message.content | from_json) | to_nice_json }}"
 
-    - name: Extract the AI-generated text into a variable
+    - name: Extract the AI recommendations into a variable for downstream use
       ansible.builtin.set_stats:
         data:
-          ai_recommendations: "{{ _llm_response.content.choices[0].message.content | from_json) | to_nice_json }}"
+          ai_recommendations: "{{ (_llm_response.json.choices[0].message.content | from_json).ai_recommendations }}"
