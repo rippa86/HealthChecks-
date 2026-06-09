@@ -11,7 +11,7 @@
           job_template: {{ ai_recommendations.job_template }}
           vars:
             hostname: {{ ai_recommendations.CI_name }}
-            lvm_name: {{ common_labels.device }}
+            lvm_name: {{ labels.device }}
             extents: 0.70G
         short_description: "AI Confidence: {{ ai_recommendations.confidence_percentage }} {{ ai_recommendations.CHG_short_description }}"
         description: | 
