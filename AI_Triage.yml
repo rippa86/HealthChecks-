@@ -70,4 +70,9 @@
 
     - name: Extract the AI-generated text into a variable
       ansible.builtin.debug:
-        msg: "{{ _llm_response }}"
+        msg: "{{ (_llm_response.content.choices[0].message.content | from_json) | to_nice_json }}"
+
+    - name: Extract the AI-generated text into a variable
+      ansible.builtin.set_stats:
+        data:
+          ai_recommendations: "{{ _llm_response.content.choices[0].message.content | from_json) | to_nice_json }}"
