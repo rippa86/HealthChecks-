@@ -37,14 +37,14 @@
                 6. Identify the exact variables required to execute the recommended playbook based on the template definitions. You must also include the specific playbook name as the "job_template".
                 7. Do not use emojis in your response.
                 8. Output your final response strictly in the following JSON format. Do not include any text outside of the JSON block.
-                   JSON Schema to include the following keys:
-                  CI_name: Name of the server or CI,
+                  JSON Schema to include the following keys: under ai_recommendations:
+                  CI_name: Name of the server or CI
                   required_vars: List of variables required to execute the recommended playbook
                   job_template: Name of the selected playbook from the Controller templates,
-                  var_name: value based on context
-                  description_of_why: Explanation for the playbook choice
+                  description_of_why: Explanation for the playbook choice in under 100 words
                   confidence_percentage: XX%
                   CHG_description: Short description suitable for a ServiceNow Change Request
+                  CHG_short_description: Short description suitable for a ServiceNow Change Request
                   justification: Detailed justification for the change request
                   risk_and_impact: Assessment of risk and potential business impact
 
