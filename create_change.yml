@@ -26,5 +26,5 @@
         comments: | 
           This Change request was triggered via Ansible Automation Platform:
           Workflow Name: {{ awx_workflow_job_name }}
-          Workflow ID:   {{ awx_workflow_job_id }}}}
+          Workflow ID:   {{ awx_workflow_job_id }}
           url: https://aap-prd1.lab.rippa.io/#/jobs/workflow/{{ awx_workflow_job_id }}/output

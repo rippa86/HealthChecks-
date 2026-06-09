@@ -25,6 +25,9 @@ hostname: "unknown"   # Maps to cmdb_ci
 # ==========================================
 start_date: ""
 end_date: ""
+awx_workflow_job_name: "Disk AI analysis"
+awx_workflow_job_id: "418"
+
 
 # ==========================================
 # Planning & Analysis
