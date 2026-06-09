@@ -8,11 +8,11 @@
         name: new_rfc
       vars:
         implementation_plan: |
-          job_template: {{ AI_recommendations.job_template }}
+          job_template: {{ ai_recommendations.job_template }}
           vars:
             hostname: {{ ai_recommendations.CI_name }}
             lvm_name: {{ common_labels.device }}
-            extents: +100%FREE
+            extents: 0.70G
         short_description: "AI Confidence: {{ ai_recommendations.confidence_percentage }} {{ ai_recommendations.CHG_short_description }}"
         description: | 
           {{ ai_recommendations.CHG_description }}
