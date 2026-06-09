@@ -2,7 +2,29 @@
   gather_facts: no
 
   tasks:
+
     - name: Update Incident
       ansible.builtin.include_role:
         name: new_rfc
-     
+      vars:
+        implementation_plan: |
+          job_template: {{ AI_recommendations.job_template }}
+          vars:
+            hostname: {{ ai_recommendations.CI_name }}
+            lvm_name: {{ common_labels.device }}
+            extents: +100%FREE
+        short_description: "AI Confidence: {{ ai_recommendations.confidence_percentage }} {{ ai_recommendations.CHG_short_description }}"
+        description: | 
+          {{ ai_recommendations.CHG_description }}
+          Reasoning: {{ ai_recommendations.description_of_why }}
+        justification: "{{ ai_recommendations.justification }}"
+        risk_impact_analysis: "{{ ai_recommendations.risk_and_impact }}"
+        hostname: "{{ ai_recommendations.CI_name }}"
+        priority: 3
+        work_notes: |
+          AI Analysis indicates that the following remediation playbook is the most effective and safest choice: {{ ai_recommendations.job_template }}. Awaiting change Approval before scheduleing. 
+        comments: | 
+          This Change request was triggered via Ansible Automation Platform:
+          Workflow Name: {{ awx_workflow_job_name }}
+          Workflow ID:   {{ awx_workflow_job_id }}}}
+          url: https://aap-prd1.lab.rippa.io/#/jobs/workflow/{{ awx_workflow_job_id }}/output
