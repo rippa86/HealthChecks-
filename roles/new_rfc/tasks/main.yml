@@ -1,0 +1,84 @@
+#- name: Create change request
+  # servicenow.itsm.change_request:
+  #   instance:
+  #     host: "{{ snow_instance }}"
+  #     username: "{{ snow_username }}"
+  #     password: "{{ snow_password }}"
+  #   type: normal
+  #   state: new
+  #   requested_by: AAP
+  #   short_description: Testing Role #"{{ short_description }}"
+  #   description: Testing Role again #"{{ short_description }}"
+  #   assignment_group: Software
+  #   priority: 3 #"{{ priority }}"
+  #   risk: 4 #"{{ risk }}"
+  #   other: 
+  #     start_date: 2026-06-11 02:00:00
+  #     end_date: 2026-06-11 03:00:00
+  #     cmdb_ci: 007c4001c343101035ae3f52c1d3aeb2
+  # register: change_request
+
+
+- name: Create change request
+  servicenow.itsm.change_request:
+    instance:
+      host: "{{ snow_instance }}"
+      username: "{{ snow_username }}"
+      password: "{{ snow_password }}"
+    number: CHG0030004
+    other:
+      cmdb_ci: grafana-demo.lab.rippa.io
+      justification: "Upgrading the core router to patch a critical security vulnerability."
+      implementation_plan: |
+        1. Divert traffic to secondary router.
+        2. Apply firmware update.
+        3. Reboot primary router.
+        4. Restore normal traffic flow.
+      risk_impact_analysis: "Low risk. Secondary router has sufficient capacity to handle peak load."
+      test_plan: "Run standard automated network diagnostic suite post-reboot."
+      backout_plan: "Roll back to previous firmware version via backup image."
+
+- name: Update Work Notes and Additional Comments
+  servicenow.itsm.change_request:
+    instance:
+      host: "{{ snow_instance }}"
+      username: "{{ snow_username }}"
+      password: "{{ snow_password }}"
+    number: "CHG0030004" # The ticket you want to update
+    other:
+      work_notes: "Ansible automation has successfully verified the target server state prior to execution."
+      comments: "Hello, we are preparing to execute your requested change."
+  register: chg_notes_result
+# - name: Create change request
+#   servicenow.itsm.change_request:
+#     instance:
+#       host: "{{ instance }}"
+#       username: "{{ username }}"
+#       password: "{{ password }}"
+#     type: normal
+#     state: new
+#     requested_by: AAP
+#     short_description: "{{ inc_number }}"
+#     description: "creating a new SSL certificate for rippademo.com"
+#     priority: moderate
+#     risk: low
+#   register: change_result
+
+- name: set stats
+  ansible.builtin.set_stats:
+    data:
+      chg_number: "{{ change_request.record.number }}"
+      chg_sysid: "{{ change_request.record.sys_id }}"
+
+# - name: Update ServiceNow ticket to indicate start
+#   servicenow.itsm.api:
+#     instance:
+#       host: "{{ instance }}"
+#       username: "{{ username }}"
+#       password: "{{ password }}"
+#     resource: incident
+#     action: patch
+#     sys_id: "{{ inc_sysid }}"
+#     data:
+#       work_notes: "{{ change_result.record.number }} Raised via Ansible."
+#   register: snow_var

@@ -1,0 +1,7 @@
+- hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Update Incident
+      ansible.builtin.include_role:
+        name: new_rfc
