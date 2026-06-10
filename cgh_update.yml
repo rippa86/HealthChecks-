@@ -1,0 +1,17 @@
+---
+- name: ServiceNow Change Validation Playbook
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # Target Change Record
+    change_number: "{{ eda_change_details.number }}"
+  tasks:
+    - name: Update Work Notes and Additional Comments
+      servicenow.itsm.change_request:
+        instance:
+          host: "{{ snow_instance }}"
+          username: "{{ snow_username }}"
+          password: "{{ snow_password }}"
+        number: "{{ change_number }}"
+        other:
+          work_notes: "Ansible has sceduled a new Job template for implementation. See https://aap-prd1.lab.rippa.io/execution/schedules?page=1&perPage=100&sort=name for more information."
