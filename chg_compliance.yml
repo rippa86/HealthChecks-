@@ -1,0 +1,87 @@
+---
+- name: ServiceNow Change Validation Playbook
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # Target Change Record
+    change_number: "{{ servicenow_change_number }}" 
+    
+    # Authorized States
+    authorized_states:
+      - "authorized"
+      - "scheduled"
+      - "implement"
+
+    # In production, these should be passed securely via AAP/AWX credentials or Ansible Vault
+
+  tasks:
+    - name: Retrieve Change Request Information from ServiceNow
+      servicenow.itsm.change_request_info:
+        instance:
+          host: "{{ snow_instance }}"
+          username: "{{ snow_username }}"
+          password: "{{ snow_password }}"
+        number: "{{ change_number }}"
+      register: sn_change_info
+
+    - name: Ensure the change record was actually found
+      fail:
+        msg: "Change request {{ change_number }} could not be found."
+      when: sn_change_info.records | length == 0
+
+    - name: Extract the change record
+      set_fact:
+        change_record: "{{ sn_change_info.records[0] }}"
+
+    - name: Parse dates and capture the current time
+      set_fact:
+        current_time: "{{ now(utc=true, fmt='%Y-%m-%d %H:%M:%S') | to_datetime('%Y-%m-%d %H:%M:%S') }}"
+        planned_start: "{{ change_record.start_date | to_datetime('%Y-%m-%d %H:%M:%S') }}"
+        planned_end: "{{ change_record.end_date | to_datetime('%Y-%m-%d %H:%M:%S') }}"
+
+    - name: Validate Change State
+      block:
+        - name: Record failure reason in stats (Invalid State)
+          set_stats:
+            data:
+              failure_reason: "Validation Failed: Change {{ change_number }} is in state '{{ change_record.state }}', which is not authorized."
+
+        - name: Fail the playbook (Invalid State)
+          fail:
+            msg: "Execution halted. State '{{ change_record.state }}' is not authorized."
+      when: change_record.state not in authorized_states
+
+    - name: Validate Execution Window
+      block:
+        - name: Update Work Notes and Additional Comments
+          servicenow.itsm.change_request:
+            instance:
+              host: "{{ snow_instance }}"
+              username: "{{ snow_username }}"
+              password: "{{ snow_password }}"
+            number: "{{ change_number }}"
+            other:
+              work_notes: |
+                SECURITY/COMPLIANCE ALERT: An automated playbook execution was attempted outside the approved change window. 
+                Attempt time (UTC): {{ current_time }}. 
+                Approved window (UTC): {{ planned_start }} to {{ planned_end }}. Execution has been blocked.
+          
+        - name: Record failure reason in stats (Out of Window)
+          set_stats:
+            data:
+              failure_reason: >-
+                Validation Failed: Execution time ({{ current_time }}) is outside 
+                the planned window ({{ planned_start }} to {{ planned_end }}). Work notes updated.
+
+        - name: Fail the playbook (Out of Window)
+          fail:
+            msg: "Execution halted. Current time is outside the planned start and end dates. ServiceNow work notes have been updated."
+      when: current_time < planned_start or current_time > planned_end
+
+    - name: Validation Successful
+      debug:
+        msg: "Validation successful! Change is authorized and execution is within the approved time window. Proceeding..."
+        
+    # ---------------------------------------------------------
+    # Proceed with your implementation tasks below this line
+    # ---------------------------------------------------------
