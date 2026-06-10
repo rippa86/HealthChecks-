@@ -34,7 +34,7 @@
     state: new
     requested_by: AAP
     short_description: "{{ short_description }}"
-    description: "{{ short_description }}"
+    description: "{{ description }}"
     assignment_group: Software
     priority: "{{ priority }}"
     risk: "{{ risk }}"
